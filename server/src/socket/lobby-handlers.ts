@@ -66,6 +66,23 @@ export function registerLobbyHandlers(
     });
   });
 
+  socket.on('room:get_state', (callback) => {
+    const playerId = socket.data.playerId as string | undefined;
+    const roomCode = socket.data.roomCode as string | undefined;
+    if (!playerId || !roomCode) return callback({ ok: false, error: 'Not in a room' });
+
+    const room = roomManager.getRoomByCode(roomCode);
+    if (!room) return callback({ ok: false, error: 'Room not found' });
+
+    const players = room.players.map(p => ({
+      id: p.id,
+      name: p.name,
+      isHost: p.isHost,
+      isConnected: p.isConnected,
+    }));
+    callback({ ok: true, players, hostId: room.hostPlayerId, roomCode: room.code });
+  });
+
   socket.on('room:leave', () => {
     const playerId = socket.data.playerId as string | undefined;
     if (!playerId) return;

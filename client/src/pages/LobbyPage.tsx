@@ -27,6 +27,14 @@ export function LobbyPage() {
       setHostId(data.hostId);
     });
 
+    // Request current room state on mount (in case room:state was missed)
+    socket.emit('room:get_state', (res) => {
+      if (res.ok && res.players && res.hostId) {
+        setPlayers(res.players);
+        setHostId(res.hostId);
+      }
+    });
+
     socket.on('room:player_joined', (player) => {
       setPlayers(prev => [...prev, player]);
     });

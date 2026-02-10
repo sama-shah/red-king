@@ -14,6 +14,10 @@ export interface ClientToServerEvents {
 
   'room:leave': () => void;
 
+  'room:get_state': (
+    callback: (response: { ok: boolean; players?: Array<{ id: string; name: string; isHost: boolean; isConnected: boolean }>; hostId?: string; roomCode?: string; error?: string }) => void
+  ) => void;
+
   'room:ready': (isReady: boolean) => void;
 
   'room:start': (
