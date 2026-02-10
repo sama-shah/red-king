@@ -9,7 +9,7 @@ import { ResultsPage } from './pages/ResultsPage';
 
 export function App() {
   return (
-    <BrowserRouter>
+    <BrowserRouter basename={import.meta.env.BASE_URL}>
       <SocketProvider>
         <PlayerProvider>
           <GameProvider>
