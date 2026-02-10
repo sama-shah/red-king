@@ -37,7 +37,7 @@ export function SelfArea({
       </div>
       <CardGrid
         cards={grid}
-        size="lg"
+        size="md"
         selectableSlots={selectableSlots}
         selectedSlot={selectedSlot}
         onCardClick={onCardClick}

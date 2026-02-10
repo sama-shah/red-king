@@ -35,7 +35,7 @@ export function OpponentArea({
       </div>
       <CardGrid
         cards={player.grid}
-        size="sm"
+        size="md"
         selectableSlots={selectableSlots}
         onCardClick={onCardClick}
       />

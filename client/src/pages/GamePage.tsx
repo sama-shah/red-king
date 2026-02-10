@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { GridPosition, Card as CardType, hasPower } from '@red-king/shared';
 import { useSocket } from '../context/SocketContext';
@@ -19,8 +19,6 @@ type InteractionMode =
   | 'none'
   | 'peek_select'
   | 'swap_select'
-  | 'tap_self_select'
-  | 'tap_other_select'
   | 'power_peek_own'
   | 'power_peek_other'
   | 'power_swap'
@@ -53,7 +51,7 @@ export function GamePage() {
   const [showPowerResultModal, setShowPowerResultModal] = useState(false);
   const [powerResultCards, setPowerResultCards] = useState<Array<{ playerId: string; slotIndex: GridPosition; card: CardType }>>([]);
 
-  // Reset drawn-card state when turn phase resets
+  // Reset state when turn phase resets
   useEffect(() => {
     if (!gameState?.isMyTurn || gameState?.turnPhase === 'pre_draw') {
       setShowDrawnModal(false);
@@ -107,9 +105,10 @@ export function GamePage() {
     }
   }, [gameState, navigate, showScoresModal]);
 
-  // --- Card click handlers ---
+  // --- Card click handlers (no useCallback — avoids stale closures) ---
 
-  const handleMyCardClick = useCallback((slotIndex: GridPosition) => {
+  const handleMyCardClick = (slotIndex: GridPosition) => {
+    // Peek phase: select cards to peek
     if (mode === 'peek_select') {
       setSelectedSlots(prev => {
         if (prev.includes(slotIndex)) return prev.filter(s => s !== slotIndex);
@@ -128,17 +127,14 @@ export function GamePage() {
       });
       return;
     }
+    // Swap mode: place drawn/discard card into grid
     if (mode === 'swap_select') {
       socket.emit('turn:drawn_action', { type: 'swap_with_grid', slotIndex }, () => {});
       setMode('none');
       setShowDrawnModal(false);
       return;
     }
-    if (mode === 'tap_self_select') {
-      socket.emit('turn:action', { type: 'tap_self', slotIndex }, () => {});
-      setMode('none');
-      return;
-    }
+    // Power: peek own (7)
     if (mode === 'power_peek_own') {
       socket.emit('turn:power', { type: 'peek_own', slotIndex }, (res) => {
         if (res.ok && res.revealedCards) {
@@ -149,31 +145,32 @@ export function GamePage() {
       setMode('none');
       return;
     }
+    // Power: reveal own (Q)
     if (mode === 'power_reveal') {
       socket.emit('turn:power', { type: 'reveal_own', slotIndex }, () => {});
       setMode('none');
       return;
     }
+    // Power: swap own card first (9)
     if (mode === 'power_swap') {
-      // First card for swap power (9) — select own card
       setPowerFrom({ playerId: playerId!, slotIndex });
       setMode('power_swap_target');
       return;
     }
-    // "any card" modes (own or opponent)
-    handleAnyCardSelect(playerId!, slotIndex);
-  }, [mode, socket, playerId]);
-
-  const handleOpponentCardClick = useCallback((targetPlayerId: string, slotIndex: GridPosition) => {
-    if (mode === 'tap_other_select') {
-      socket.emit('turn:action', {
-        type: 'tap_other',
-        targetPlayerId,
-        targetSlotIndex: slotIndex,
-      }, () => {});
-      setMode('none');
+    // "any card" multi-select modes
+    if (isAnyCardMode(mode)) {
+      handleAnyCardSelect(playerId!, slotIndex);
       return;
     }
+    // Pre-draw tap: tapping own card = tap self (claim match with discard)
+    if (mode === 'none' && gameState?.isMyTurn && gameState.turnPhase === 'pre_draw' && gameState.topDiscard) {
+      socket.emit('turn:action', { type: 'tap_self', slotIndex }, () => {});
+      return;
+    }
+  };
+
+  const handleOpponentCardClick = (targetPlayerId: string, slotIndex: GridPosition) => {
+    // Power: peek other (8)
     if (mode === 'power_peek_other') {
       socket.emit('turn:power', { type: 'peek_other', targetPlayerId, targetSlotIndex: slotIndex }, (res) => {
         if (res.ok && res.revealedCards) {
@@ -184,6 +181,7 @@ export function GamePage() {
       setMode('none');
       return;
     }
+    // Power: swap target (9) — pick opponent's card to swap with
     if (mode === 'power_swap_target' && powerFrom) {
       socket.emit('turn:power', {
         type: 'swap_own_with_other',
@@ -195,23 +193,37 @@ export function GamePage() {
       setPowerFrom(null);
       return;
     }
-    // "any card" modes
-    handleAnyCardSelect(targetPlayerId, slotIndex);
-  }, [mode, socket, powerFrom, playerId]);
+    // "any card" multi-select modes
+    if (isAnyCardMode(mode)) {
+      handleAnyCardSelect(targetPlayerId, slotIndex);
+      return;
+    }
+    // Pre-draw tap: tapping opponent's card = tap other (claim match with discard)
+    if (mode === 'none' && gameState?.isMyTurn && gameState.turnPhase === 'pre_draw' && gameState.topDiscard) {
+      socket.emit('turn:action', {
+        type: 'tap_other',
+        targetPlayerId,
+        targetSlotIndex: slotIndex,
+      }, () => {});
+      return;
+    }
+  };
 
-  // For look-at-two / blind swap / Black King multi-select
-  const handleAnyCardSelect = useCallback((targetPlayerId: string, slotIndex: GridPosition) => {
+  // Handles modes where any card (own or opponent) can be selected
+  const handleAnyCardSelect = (targetPlayerId: string, slotIndex: GridPosition) => {
+    // Look at two (10) or Black King look phase
     if (mode === 'power_look_two' || mode === 'power_bk_look') {
+      const currentMode = mode; // capture before async
       setPowerSelections(prev => {
         const next = [...prev, { playerId: targetPlayerId, slotIndex }];
         if (next.length === 2) {
-          const powerType = mode === 'power_bk_look' ? 'black_king_look' : 'look_at_two';
+          const powerType = currentMode === 'power_bk_look' ? 'black_king_look' : 'look_at_two';
           socket.emit('turn:power', { type: powerType, selections: next } as any, (res) => {
             if (res.ok && res.revealedCards) {
               setPowerResultCards(res.revealedCards);
               setShowPowerResultModal(true);
             }
-            if (mode === 'power_bk_look') {
+            if (currentMode === 'power_bk_look') {
               setMode('power_bk_swap_from');
             } else {
               setMode('none');
@@ -223,11 +235,13 @@ export function GamePage() {
       });
       return;
     }
+    // Blind swap from (J) or Black King swap from
     if (mode === 'power_blind_swap_from' || mode === 'power_bk_swap_from') {
       setPowerFrom({ playerId: targetPlayerId, slotIndex });
       setMode(mode === 'power_blind_swap_from' ? 'power_blind_swap_to' : 'power_bk_swap_to');
       return;
     }
+    // Blind swap to (J) or Black King swap to
     if (mode === 'power_blind_swap_to' || mode === 'power_bk_swap_to') {
       if (!powerFrom) return;
       const powerType = mode === 'power_bk_swap_to' ? 'black_king_swap' : 'blind_swap';
@@ -240,7 +254,7 @@ export function GamePage() {
       setPowerFrom(null);
       return;
     }
-  }, [mode, socket, powerFrom]);
+  };
 
   // Drawn card popup choices
   const handleSwapChoice = () => {
@@ -255,11 +269,13 @@ export function GamePage() {
   };
 
   const handleUsePowerChoice = () => {
+    // Capture the rank NOW before the async emit, so it won't go stale
+    const cardRank = gameState?.drawnCard?.rank;
+    if (!cardRank) return;
     setShowDrawnModal(false);
     socket.emit('turn:drawn_action', { type: 'use_power' }, (res) => {
-      if (res.ok && gameState?.drawnCard) {
-        const rank = gameState.drawnCard.rank;
-        switch (rank) {
+      if (res.ok) {
+        switch (cardRank) {
           case '7': setMode('power_peek_own'); break;
           case '8': setMode('power_peek_other'); break;
           case '9': setMode('power_swap'); break;
@@ -297,26 +313,29 @@ export function GamePage() {
   const allSlots: GridPosition[] = [0, 1, 2, 3];
 
   const isMyTurnPreDraw = gameState.isMyTurn && gameState.turnPhase === 'pre_draw';
+  const hasDiscard = !!gameState.topDiscard;
   const drawPileClickable = isMyTurnPreDraw;
-  const discardPileClickable = isMyTurnPreDraw && !!gameState.topDiscard;
+  const discardPileClickable = isMyTurnPreDraw && hasDiscard;
+  // During pre_draw with a discard, all cards are tappable (tap self / tap other)
+  const cardsTappableForTap = isMyTurnPreDraw && hasDiscard && mode === 'none';
 
-  // Determine which cards are selectable per mode
+  // Determine which cards are selectable
   const selfSelectableModes: InteractionMode[] = [
-    'peek_select', 'swap_select', 'tap_self_select',
+    'peek_select', 'swap_select',
     'power_peek_own', 'power_reveal', 'power_swap',
     'power_look_two', 'power_bk_look',
     'power_blind_swap_from', 'power_blind_swap_to',
     'power_bk_swap_from', 'power_bk_swap_to',
   ];
   const oppSelectableModes: InteractionMode[] = [
-    'tap_other_select', 'power_peek_other', 'power_swap_target',
+    'power_peek_other', 'power_swap_target',
     'power_look_two', 'power_bk_look',
     'power_blind_swap_from', 'power_blind_swap_to',
     'power_bk_swap_from', 'power_bk_swap_to',
   ];
 
-  const mySelectableSlots = selfSelectableModes.includes(mode) ? allSlots : [];
-  const oppSelectableSlots = oppSelectableModes.includes(mode) ? allSlots : [];
+  const mySelectableSlots = selfSelectableModes.includes(mode) || cardsTappableForTap ? allSlots : [];
+  const oppSelectableSlots = oppSelectableModes.includes(mode) || cardsTappableForTap ? allSlots : [];
 
   const canUsePower = gameState.drawnCard && hasPower(gameState.drawnCard);
 
@@ -338,28 +357,32 @@ export function GamePage() {
     }
 
     if (gameState.turnPhase === 'pre_draw') {
-      return { text: 'Your turn! Tap the draw pile or discard pile to pick up a card', color: 'var(--color-success)' };
+      if (hasDiscard) {
+        return {
+          text: 'Your turn! Tap a pile to pick up a card, or tap any card to claim it matches the discard.',
+          color: 'var(--color-success)',
+        };
+      }
+      return { text: 'Your turn! Tap the draw pile to draw a card.', color: 'var(--color-success)' };
     }
 
     if (mode === 'swap_select') {
       const label = drawnFrom === 'discard' ? 'discard card' : 'drawn card';
-      return { text: `Tap one of your cards to swap it with the ${label}`, color: 'var(--color-warning)' };
+      return { text: `Tap one of your cards to swap it with the ${label}.`, color: 'var(--color-warning)' };
     }
-    if (mode === 'tap_self_select') return { text: 'Tap one of your cards that matches the top discard', color: 'var(--color-warning)' };
-    if (mode === 'tap_other_select') return { text: "Tap an opponent's card that matches the top discard", color: 'var(--color-warning)' };
-    if (mode === 'power_peek_own') return { text: '7 Power — Tap one of your cards to peek at it', color: 'var(--color-primary)' };
-    if (mode === 'power_peek_other') return { text: "8 Power — Tap an opponent's card to peek at it", color: 'var(--color-primary)' };
-    if (mode === 'power_swap') return { text: '9 Power — Tap your card to start the swap', color: 'var(--color-primary)' };
-    if (mode === 'power_swap_target') return { text: "9 Power — Now tap an opponent's card to swap with", color: 'var(--color-primary)' };
-    if (mode === 'power_look_two') return { text: `10 Power — Tap 2 cards to look at (${powerSelections.length}/2)`, color: 'var(--color-primary)' };
-    if (mode === 'power_blind_swap_from') return { text: 'J Power — Tap the first card to swap', color: 'var(--color-primary)' };
-    if (mode === 'power_blind_swap_to') return { text: 'J Power — Now tap the second card to swap with', color: 'var(--color-primary)' };
-    if (mode === 'power_reveal') return { text: 'Q Power — Tap one of your cards to permanently reveal it', color: 'var(--color-primary)' };
-    if (mode === 'power_bk_look') return { text: `Black King — Look at 2 cards first (${powerSelections.length}/2)`, color: 'var(--color-primary)' };
-    if (mode === 'power_bk_swap_from') return { text: 'Black King — Now tap the first card to swap', color: 'var(--color-primary)' };
-    if (mode === 'power_bk_swap_to') return { text: 'Black King — Now tap the second card to swap with', color: 'var(--color-primary)' };
+    if (mode === 'power_peek_own') return { text: '7 Power — Tap one of your cards to peek at it.', color: 'var(--color-primary)' };
+    if (mode === 'power_peek_other') return { text: "8 Power — Tap an opponent's card to peek at it.", color: 'var(--color-primary)' };
+    if (mode === 'power_swap') return { text: '9 Power — Tap your card to start the swap.', color: 'var(--color-primary)' };
+    if (mode === 'power_swap_target') return { text: "9 Power — Now tap an opponent's card to swap with.", color: 'var(--color-primary)' };
+    if (mode === 'power_look_two') return { text: `10 Power — Tap any 2 cards to look at (${powerSelections.length}/2).`, color: 'var(--color-primary)' };
+    if (mode === 'power_blind_swap_from') return { text: 'J Power — Tap the first card to swap (any card on the table).', color: 'var(--color-primary)' };
+    if (mode === 'power_blind_swap_to') return { text: 'J Power — Now tap the second card to swap with.', color: 'var(--color-primary)' };
+    if (mode === 'power_reveal') return { text: 'Q Power — Tap one of your cards to permanently reveal it.', color: 'var(--color-primary)' };
+    if (mode === 'power_bk_look') return { text: `Black King — Choose any 2 cards to look at (${powerSelections.length}/2).`, color: 'var(--color-primary)' };
+    if (mode === 'power_bk_swap_from') return { text: 'Black King — Now swap any 2 cards. Tap the first card.', color: 'var(--color-primary)' };
+    if (mode === 'power_bk_swap_to') return { text: 'Black King — Tap the second card to complete the swap.', color: 'var(--color-primary)' };
 
-    if (gameState.turnPhase === 'drawn') return { text: 'Choose what to do with your card', color: 'var(--color-warning)' };
+    if (gameState.turnPhase === 'drawn') return { text: 'Choose what to do with your card.', color: 'var(--color-warning)' };
 
     return { text: '', color: 'var(--color-text-muted)' };
   };
@@ -465,39 +488,16 @@ export function GamePage() {
         </div>
       </div>
 
-      {/* Secondary Actions (Tap Self, Tap Other, Call) — only during pre_draw */}
-      {gameState.isMyTurn && gameState.turnPhase === 'pre_draw' && (
-        <div style={{
-          display: 'flex',
-          justifyContent: 'center',
-          gap: '8px',
-          animation: 'fadeIn 0.3s ease-out',
-        }}>
+      {/* Call button — only shown during pre_draw if nobody called yet */}
+      {isMyTurnPreDraw && !gameState.callerPlayerId && (
+        <div style={{ display: 'flex', justifyContent: 'center', animation: 'fadeIn 0.3s ease-out' }}>
           <Button
-            onClick={() => setMode('tap_self_select')}
-            variant="ghost"
+            onClick={() => socket.emit('turn:action', { type: 'call' }, () => {})}
+            variant="danger"
             size="sm"
-            disabled={!gameState.topDiscard}
           >
-            Tap Self
+            Call (end round)
           </Button>
-          <Button
-            onClick={() => setMode('tap_other_select')}
-            variant="ghost"
-            size="sm"
-            disabled={!gameState.topDiscard}
-          >
-            Tap Other
-          </Button>
-          {!gameState.callerPlayerId && (
-            <Button
-              onClick={() => socket.emit('turn:action', { type: 'call' }, () => {})}
-              variant="danger"
-              size="sm"
-            >
-              Call
-            </Button>
-          )}
         </div>
       )}
 
@@ -506,7 +506,7 @@ export function GamePage() {
         <div style={{
           display: 'flex',
           justifyContent: 'center',
-          animation: (mode === 'peek_select' || mode === 'swap_select') ? 'glow 2s ease-in-out infinite' : 'none',
+          animation: (mode === 'peek_select' || mode === 'swap_select' || cardsTappableForTap) ? 'glow 2s ease-in-out infinite' : 'none',
           borderRadius: 'var(--radius-lg)',
           padding: '4px',
         }}>
@@ -680,6 +680,14 @@ export function GamePage() {
       )}
     </div>
   );
+}
+
+function isAnyCardMode(mode: InteractionMode): boolean {
+  return [
+    'power_look_two', 'power_bk_look',
+    'power_blind_swap_from', 'power_blind_swap_to',
+    'power_bk_swap_from', 'power_bk_swap_to',
+  ].includes(mode);
 }
 
 function getPowerDescription(rank: string): string {
