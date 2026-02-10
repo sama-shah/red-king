@@ -30,7 +30,6 @@ export function registerGameHandlers(
 
     const room = roomManager.getRoomByCode(roomCode);
     if (!room) return callback({ ok: false, error: 'Room not found' });
-    if (room.hostPlayerId !== playerId) return callback({ ok: false, error: 'Only the host can start' });
     if (room.playerCount < MIN_PLAYERS) return callback({ ok: false, error: `Need at least ${MIN_PLAYERS} players` });
 
     const engine = new GameEngine(room.players, room.config);

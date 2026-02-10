@@ -112,18 +112,10 @@ export function LobbyPage() {
         <Button onClick={handleLeave} variant="ghost" style={{ flex: 1 }}>
           Leave
         </Button>
-        {isHost && (
-          <Button onClick={handleStart} disabled={players.length < 2} style={{ flex: 1 }}>
-            Start Game
-          </Button>
-        )}
+        <Button onClick={handleStart} disabled={players.length < 2} style={{ flex: 1 }}>
+          Start Game
+        </Button>
       </div>
-
-      {!isHost && (
-        <div style={{ fontSize: '13px', color: 'var(--color-text-muted)' }}>
-          Waiting for host to start the game...
-        </div>
-      )}
     </div>
   );
 }
