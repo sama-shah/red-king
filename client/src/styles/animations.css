@@ -29,6 +29,16 @@
   100% { opacity: 1; }
 }
 
+@keyframes glow {
+  0%, 100% { box-shadow: 0 0 8px rgba(220, 38, 38, 0.4); }
+  50% { box-shadow: 0 0 20px rgba(220, 38, 38, 0.8); }
+}
+
+@keyframes glowGreen {
+  0%, 100% { box-shadow: 0 0 8px rgba(22, 163, 74, 0.4); }
+  50% { box-shadow: 0 0 20px rgba(22, 163, 74, 0.8); }
+}
+
 .animate-flip-in {
   animation: flipIn 0.3s ease-out;
 }
