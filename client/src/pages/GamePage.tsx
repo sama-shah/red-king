@@ -51,6 +51,15 @@ export function GamePage() {
   const [showPowerResultModal, setShowPowerResultModal] = useState(false);
   const [powerResultCards, setPowerResultCards] = useState<Array<{ playerId: string; slotIndex: GridPosition; card: CardType }>>([]);
 
+  // Auto-enter peek mode when game state shows peeking phase
+  // (handles the case where peek:prompt event was missed during navigation)
+  useEffect(() => {
+    if (gameState?.phase === 'peeking' && mode === 'none') {
+      setMode('peek_select');
+      setSelectedSlots([]);
+    }
+  }, [gameState?.phase]);
+
   // Reset state when turn phase resets
   useEffect(() => {
     if (!gameState?.isMyTurn || gameState?.turnPhase === 'pre_draw') {
