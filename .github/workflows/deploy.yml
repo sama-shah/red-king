@@ -30,6 +30,8 @@ jobs:
       - run: npm run build -w shared
 
       - run: npm run build -w client
+        env:
+          VITE_SERVER_URL: ${{ vars.SERVER_URL }}
 
       - uses: actions/upload-pages-artifact@v3
         with:
