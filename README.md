@@ -1,6 +1,7 @@
 # Red King
 
 A multiplayer online memory card game built with React, Node.js, and Socket.IO.
+Play it here: https://sama-shah.github.io/red-king/?p=%2Fred-king%2Flobby
 
 ## How to Play
 
