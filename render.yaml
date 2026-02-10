@@ -1,0 +1,12 @@
+services:
+  - type: web
+    name: red-king-server
+    runtime: node
+    plan: free
+    buildCommand: npm ci && npm run build -w shared && npm run build -w server
+    startCommand: npm run start -w server
+    envVars:
+      - key: CLIENT_URL
+        value: https://sama-shah.github.io
+      - key: NODE_ENV
+        value: production

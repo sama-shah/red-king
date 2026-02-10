@@ -8,7 +8,7 @@ import { registerGameHandlers } from './game-handlers.js';
 export function createSocketServer(httpServer: HttpServer, roomManager: RoomManager) {
   const io = new Server<ClientToServerEvents, ServerToClientEvents>(httpServer, {
     cors: {
-      origin: process.env.CLIENT_URL || 'http://localhost:5173',
+      origin: (process.env.CLIENT_URL || 'http://localhost:5173').split(',').map(u => u.trim()),
       methods: ['GET', 'POST'],
     },
   });
