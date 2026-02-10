@@ -531,7 +531,7 @@ export function GamePage() {
       )}
 
       {/* Game Log */}
-      <GameLog />
+      <GameLog playerId={playerId ?? undefined} />
 
       {/* ===== MODALS ===== */}
 

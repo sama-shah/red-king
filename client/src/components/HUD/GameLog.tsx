@@ -7,9 +7,13 @@ interface LogEntry {
   timestamp: number;
 }
 
+interface GameLogProps {
+  playerId?: string;
+}
+
 let logId = 0;
 
-export function GameLog() {
+export function GameLog({ playerId }: GameLogProps) {
   const socket = useSocket();
   const [entries, setEntries] = useState<LogEntry[]>([]);
 
@@ -19,16 +23,24 @@ export function GameLog() {
     };
 
     socket.on('turn:drew_card', (data) => {
-      addEntry(`${data.playerId.slice(0, 6)}... drew from ${data.fromPile} pile`);
+      if (playerId && data.playerId !== playerId) return;
+      const source = data.fromPile === 'draw' ? 'draw pile' : 'discard pile';
+      addEntry(`You drew from the ${source}.`);
     });
     socket.on('turn:power_used', (data) => {
-      addEntry(`${data.playerId.slice(0, 6)}... used ${data.powerRank}: ${data.description}`);
+      if (playerId && data.playerId !== playerId) return;
+      addEntry(`You used ${data.powerRank}: ${data.description}`);
     });
     socket.on('tap:result', (data) => {
+      if (playerId && data.tapperId !== playerId) return;
       addEntry(data.description);
     });
     socket.on('game:called', (data) => {
-      addEntry(`${data.callerId.slice(0, 6)}... called! Final turns.`);
+      if (playerId && data.callerId === playerId) {
+        addEntry('You called! Final turns for everyone else.');
+      } else {
+        addEntry('A player called! Final turns.');
+      }
     });
 
     return () => {
@@ -37,7 +49,7 @@ export function GameLog() {
       socket.off('tap:result');
       socket.off('game:called');
     };
-  }, [socket]);
+  }, [socket, playerId]);
 
   return (
     <div
